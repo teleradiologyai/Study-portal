@@ -1,4 +1,6 @@
 Study-Portal Infrastructure
+
+
 The Study-Portal Infrastructure is a platform designed for accessing medical images and reports related to teleradiology studies. The portal allows physicians, radiologists, and researchers to access medical images and reports from various locations, facilitating remote consultations and diagnoses.
 
 How it Works
