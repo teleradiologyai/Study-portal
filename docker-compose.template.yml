@@ -1,0 +1,133 @@
+version: '3.5'
+
+services:
+  nginx:
+    image: nginx:latest
+    restart: always
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx/server.crt:/etc/nginx/server.crt
+      - ./config/nginx/server.key:/etc/nginx/server.key
+      - ./config/nginx/json_log:/etc/nginx/conf.d/json_log
+      - ./config/nginx/proxy.conf:/etc/nginx/proxy.conf
+      - ./config/nginx/inteleviewer-server/:/etc/nginx/inteleviewer-server
+    ports:
+      - 80:80
+      - 443:443
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: $NGINX_CONTAINER_MEM
+    env_file:
+      - ./.env.orders-portal.$PRODUCTION_ENV
+    labels:
+      com.centurylinklabs.watchtower.enable: false
+      service.name: 'nginx'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  fluent:
+    build:
+      context: .
+      dockerfile: fluentd.Dockerfile
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: $FLUENT_CONTAINER_MEM
+    volumes:
+      - ./config/fluentd:/fluentd/etc
+    expose:
+      - "1514/udp"
+      - "24224"
+    env_file:
+      - ./.env.orders-portal.$PRODUCTION_ENV
+    labels:
+      com.centurylinklabs.watchtower.enable: false
+      service.name: 'fluent'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  web:
+    image: index.docker.io/timpwbaker/hexarad_orders_portal:$PRODUCTION_ENV
+    command: 'bundle exec rails s -b 0.0.0.0'
+    restart: always
+    deploy:
+      replicas: $WEB_CONCURRENT_INSTANCES
+      resources:
+        limits:
+          cpus: $WEB_CONTAINER_CPU
+          memory: $RAILS_CONTAINER_MEM
+    expose:
+      - "3000"
+    env_file:
+      - ./.env.orders-portal.$PRODUCTION_ENV
+    labels:
+      service.name: 'orders-portal-web'
+      com.centurylinklabs.watchtower.lifecycle.post-update: 'bin/post_deploy.sh'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  watchtower:
+    image: containrrr/watchtower
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: $WATCHTOWER_CONTAINER_MEM
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - $HOME/.docker/config.json:/config.json:ro
+    command: --rolling-restart --cleanup
+    env_file:
+      - ./.env.orders-portal.$PRODUCTION_ENV
+    environment:
+      WATCHTOWER_POLL_INTERVAL: 60
+      WATCHTOWER_LIFECYCLE_HOOKS: "true"
+    labels:
+      com.centurylinklabs.watchtower.enable: false
+      service.name: 'watchtower'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
+
+  newrelic-infra-agent:
+    image: newrelic/infrastructure:latest
+    cap_add:
+      - SYS_PTRACE
+    network_mode: host
+    pid: host
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: $NEW_RELIC_INFRA_CONTAINER_MEM
+    privileged: true
+    volumes:
+      - "/:/host:ro"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    restart: always
+    env_file:
+      - ./.env.orders-portal.$PRODUCTION_ENV
+    labels:
+      com.centurylinklabs.watchtower.enable: false
+      service.name: 'newrelic-infra-agent'
+    logging:
+      driver: "json-file"
+      options:
+        max-file: '5'
+        max-size: '10m'
